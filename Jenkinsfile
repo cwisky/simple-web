@@ -19,7 +19,7 @@ pipeline {
         stage('Pull Docker Image') {
             steps {
                 script {
-                    sh "sudo docker login ghcr.io -u cwisky -p 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"
+                    sh "sudo docker login ghcr.io -u cwisky -p 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"
                     sh "sudo docker pull ${DOCKER_IMAGE}"
                 }
             }
