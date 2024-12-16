@@ -1,64 +1,100 @@
 pipeline {
     agent any
+
     environment {
-        DOCKER_IMAGE = "ghcr.io/cwisky/simple-app:1.0"
-        CONTAINER_NAME = "simple-app-container"
-        LOG_FILE = "/var/log/simple-app/app.log"
+        DOCKER_IMAGE = "cwisky/simple-web:1.0"
+        GITHUB_REPO = "https://github.com/cwisky/simple-web.git"
+        JAR_FILE = "simple-web.jar"
     }
+
     stages {
-        stage('Prepare Logs') {
+        
+        stage('Cleanup Workspace') {
             steps {
-                script {
-                    sh "sudo mkdir -p /var/log/simple-app"
-                    sh "sudo touch /var/log/simple-app/app.log"
-                    sh "sudo chmod -R 775 /var/log/simple-app"
-                    sh "sudo chown -R jenkins:jenkins /var/log/simple-app"
-                }
+                //cleanWs()
+                echo 'Cleaned up'
             }
         }
-        stage('Pull Docker Image') {
+
+        stage('Git Clone') {
             steps {
-                script {
-                    sh "sudo docker login ghcr.io -u cwisky -p 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"
-                    sh "sudo docker pull ${DOCKER_IMAGE}"
-                }
+                echo 'Cloning Git repository...'
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: 'main']],
+                    userRemoteConfigs: [[
+                        credentialsId: 'GitHub_ID_PWD',       // Jenkins에서 github의 id, pwd를 등록하고 아이디를 'GitHub_ID_PWD' 으로 지정해야 함
+                        url: GITHUB_REPO
+                    ]]
+                ])
+                // JAR 파일에 실행 권한 추가
+                sh 'chmod +x ./${JAR_FILE}'
             }
         }
-        stage('Stop and Remove Existing Container') {
+
+        stage('Prepare JAR File') {
             steps {
                 script {
-                    // Stop the container only if it is running
-                    sh """
-                        if [ \$(sudo docker ps -q -f name=${CONTAINER_NAME}) ]; then
-                            echo "Stopping running container: ${CONTAINER_NAME}"
-                            sudo docker stop ${CONTAINER_NAME}
+                    echo "Preparing JAR file..."
+                    //dir('app') {
+                        sh """
+                        if [ -f ${JAR_FILE} ]; then
+                            echo "JAR file ${JAR_FILE} found."
+                        else
+                            echo "JAR file not found. Ensure the project is built correctly."
+                            exit 1
                         fi
-                    """
-                    // Remove the container only if it exists
-                    sh """
-                        if [ \$(sudo docker ps -a -q -f name=${CONTAINER_NAME}) ]; then
-                            echo "Removing existing container: ${CONTAINER_NAME}"
-                            sudo docker rm ${CONTAINER_NAME}
-                        fi
-                    """
+                        """
+                   // }
                 }
             }
         }
-        stage('Run Container') {
+        
+        stage('Build Docker Image') {
             steps {
                 script {
-                    sh """
-                        sudo docker run -d \
-                        --name ${CONTAINER_NAME} \
-                        -p 8081:8081 \
-                        ${DOCKER_IMAGE}
+                    echo "Building Docker image..." 
+                    writeFile file: 'Dockerfile', text: """
+                    FROM openjdk:21-slim
+                    COPY ${JAR_FILE} /simple-web.jar
+                    CMD ["java", "-jar", "/simple-web.jar"]
                     """
-                    // Append logs from the container to the log file
+                    sh "docker build -t ${DOCKER_IMAGE} ."
+                }
+            }
+        }
+        /*
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'Docker_Hub_id_pwd', usernameVariable: 'DOCKER_HUB_CREDENTIALS_USR', passwordVariable: 'DOCKER_HUB_CREDENTIALS_PSW')]) {
+                        echo "Pushing Docker image to Docker Hub..."
+                        sh """
+                        echo ${DOCKER_HUB_CREDENTIALS_PSW} | docker login -u ${DOCKER_HUB_CREDENTIALS_USR} --password-stdin
+                        docker push ${DOCKER_IMAGE}
+                        """
+                    }
+                }
+            }
+        }*/
+        
+        stage('Run Docker Container') {
+            steps {
+                script {
+                    echo "Running Docker container..."
                     sh """
-                        sudo docker logs -f ${CONTAINER_NAME} >> ${LOG_FILE} 2>&1 &
+                    docker ps -q --filter 'ancestor=${DOCKER_IMAGE}' | xargs --no-run-if-empty docker stop
+                    docker run -d ${DOCKER_IMAGE}
                     """
                 }
             }
         }
     }
+    /*
+    post {
+        always {
+            echo "Cleaning up workspace..."
+            //cleanWs()
+        }
+    }*/
 }
