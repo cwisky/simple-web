@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "cwisky/simple-web:1.0"
+        DOCKER_IMAGE = "cwisky/spring-web:1.0"
         GITHUB_REPO = "https://github.com/cwisky/simple-web.git"
-        JAR_FILE = "simple-web.jar"
+        JAR_FILE = "spring-web.jar"
     }
 
     stages {
@@ -56,8 +56,8 @@ pipeline {
                     echo "Building Docker image..." 
                     writeFile file: 'Dockerfile', text: """
                     FROM openjdk:21-slim
-                    COPY ${JAR_FILE} /simple-web.jar
-                    CMD ["java", "-jar", "/simple-web.jar"]
+                    COPY ${JAR_FILE} /spring-web.jar
+                    CMD ["java", "-jar", "/spring-web.jar"]
                     """
                     sh "docker build -t ${DOCKER_IMAGE} ."
                 }
@@ -84,7 +84,7 @@ pipeline {
                     echo "Running Docker container..."
                     sh """
                     docker ps -q --filter 'ancestor=${DOCKER_IMAGE}' | xargs --no-run-if-empty docker stop
-                    docker run -d ${DOCKER_IMAGE}
+                    docker run -d -p 80:80 ${DOCKER_IMAGE}
                     """
                 }
             }
